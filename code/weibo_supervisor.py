@@ -72,6 +72,10 @@ def _worker(connection,channel,work,wall_timeout,backend_factory=None,session_na
             backend.__exit__(None,None,None)
         connection.close()
 
+class BrowserCleanupError(RuntimeError):
+    """A known browser process could not be safely cleaned up; stop collection."""
+
+
 # Do not reap the leader before group cleanup: it still owns its PID.
 _TERMINATE_GRACE = 3.0
 
@@ -201,7 +205,7 @@ class SupervisedBrowserBackend:
         while self._live_descendants() and time.monotonic()<deadline:
             _pause_uninterrupted(min(.05,max(0,deadline-time.monotonic())))
         if self._live_descendants() or self._descendant_scan_failed:
-            raise RuntimeError('browser_descendant_cleanup_incomplete')
+            raise BrowserCleanupError('browser_descendant_cleanup_incomplete')
 
     def _poll_with_descendants(self, timeout):
         deadline=time.monotonic()+max(0,timeout)
@@ -278,7 +282,7 @@ class SupervisedBrowserBackend:
                 self._clean_detached_descendants()
                 _wait_uninterrupted(process,_TERMINATE_GRACE)
                 if _running(process):
-                    raise RuntimeError("browser_process_did_not_exit")
+                    raise BrowserCleanupError("browser_process_did_not_exit")
                 # Exit is confirmed; join only reaps the owned child.
                 while True:
                     try:
@@ -325,6 +329,8 @@ class SupervisedBrowserBackend:
             return message["result"]
         except KeyboardInterrupt:
             self.close()
+            raise
+        except BrowserCleanupError:
             raise
         except (RuntimeError,EOFError,BrokenPipeError,OSError):
             self._terminate()

@@ -197,6 +197,16 @@ class SupervisionTests(unittest.TestCase):
             unrelated.terminate()
             unrelated.wait(timeout=5)
 
+    def test_incomplete_cleanup_stops_instead_of_becoming_a_retryable_result(self):
+        backend = supervisor.SupervisedBrowserBackend()
+        with patch.object(backend, "_start"), patch.object(
+            backend, "_poll_with_descendants", return_value=False
+        ), patch.object(backend, "_terminate", side_effect=supervisor.BrowserCleanupError("incomplete")), patch.object(
+            backend, "_connection"
+        ):
+            with self.assertRaises(supervisor.BrowserCleanupError):
+                backend.fetch_post("https://example.invalid/offline")
+
     def test_cleanup_wait_survives_second_keyboard_interrupt(self):
         fake = type("Process", (), {"sentinel": 123})()
         with patch.object(supervisor, "wait", side_effect=[KeyboardInterrupt(), [123]]):
