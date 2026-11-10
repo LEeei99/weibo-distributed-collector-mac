@@ -1,0 +1,23 @@
+# Default deny. Ship only reviewed source and instructions.
+*
+!/.gitignore
+!/README.md
+!/WORKER.md
+!/requirements.txt
+!/*.sh
+!/code/
+!/code/*.py
+!/code/requirements.txt
+!/tools/
+!/tools/*.py
+!/tests/
+!/tests/*.py
+
+!/code/tests/
+!/code/tests/*.py
+!/.gitattributes
+
+!/UPSTREAM.md
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
