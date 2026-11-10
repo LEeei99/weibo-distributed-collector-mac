@@ -142,6 +142,28 @@ class SupervisionTests(unittest.TestCase):
             self.assertFalse(supervisor._signal_owned_group(fake, os.getpgrp(), signal.SIGTERM))
             kill_group.assert_not_called()
 
+    @unittest.skipIf(os.name == "nt", "POSIX process group ownership")
+    def test_exited_unreaped_leader_does_not_block_group_cleanup(self):
+        fake = type("Owned", (), {
+            "pid": 9000000, "_parent_pid": os.getpid(),
+            "_popen": type("Popen", (), {"returncode": None})(),
+        })()
+        with patch.object(supervisor.os, "getpgid", side_effect=ProcessLookupError()), patch.object(
+            supervisor.os, "killpg"
+        ) as kill_group:
+            self.assertTrue(supervisor._signal_owned_group(fake, fake.pid, signal.SIGKILL))
+            kill_group.assert_called_once_with(fake.pid, signal.SIGKILL)
+
+    @unittest.skipIf(os.name == "nt", "POSIX process group ownership")
+    def test_reaped_leader_cannot_signal_a_reused_group(self):
+        fake = type("Owned", (), {
+            "pid": 9000000, "_parent_pid": os.getpid(),
+            "_popen": type("Popen", (), {"returncode": 0})(),
+        })()
+        with patch.object(supervisor.os, "killpg") as kill_group:
+            self.assertFalse(supervisor._signal_owned_group(fake, fake.pid, signal.SIGKILL))
+            kill_group.assert_not_called()
+
     def test_cleanup_wait_survives_second_keyboard_interrupt(self):
         fake = type("Process", (), {"sentinel": 123})()
         with patch.object(supervisor, "wait", side_effect=[KeyboardInterrupt(), [123]]):

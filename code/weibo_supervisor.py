@@ -103,9 +103,15 @@ def _pause_uninterrupted(seconds):
 def _signal_owned_group(process, pgid, sig):
     if not pgid or pgid != process.pid or pgid == os.getpgrp():
         return False
+    # The parent validated this group before allowing browser startup.
+    # The child is not reaped until cleanup finishes, so its PID cannot be
+    # reused. On macOS getpgid can fail for an exited leader even while its
+    # descendants still occupy the verified group; signal that group directly.
+    popen = getattr(process, '_popen', None)
+    if (getattr(process, '_parent_pid', None) != os.getpid()
+            or popen is None or popen.returncode is not None):
+        return False
     try:
-        if os.getpgid(process.pid) != pgid:
-            return False
         os.killpg(pgid, sig)
         return True
     except ProcessLookupError:

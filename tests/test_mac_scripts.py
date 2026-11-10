@@ -17,7 +17,7 @@ SCRIPTS = ("Setup-Mac.sh", "Run-Worker.sh", "Monitor-Worker.sh", "Pack-Return.sh
 class ScriptTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.repo = self.root / "repo with spaces"
         self.repo.mkdir()
         self.cwd = self.root / "caller with spaces"
