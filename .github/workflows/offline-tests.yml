@@ -37,3 +37,11 @@ jobs:
           for script in Setup-Mac.sh Run-Worker.sh Monitor-Worker.sh Pack-Return.sh; do
             bash -n "$script"
           done
+      - name: Install Chromium for local HTML smoke test
+        if: runner.os == 'macOS'
+        run: python -m playwright install chromium
+      - name: Exercise real browser timeout without website requests
+        if: runner.os == 'macOS'
+        env:
+          WEIBO_BROWSER_SMOKE: "1"
+        run: python -B -m unittest discover -s tests -p test_browser_smoke.py -v

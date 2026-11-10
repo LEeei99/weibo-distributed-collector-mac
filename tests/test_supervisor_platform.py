@@ -27,8 +27,9 @@ class ImmediateBackend:
 
 
 class HangingDescendantBackend:
-    def __init__(self, marker):
+    def __init__(self, marker, detached=False):
         self.marker = marker
+        self.detached = detached
 
     def __enter__(self):
         program = ("import os,pathlib,signal,time;"
@@ -36,6 +37,7 @@ class HangingDescendantBackend:
                    "pathlib.Path(" + repr(self.marker) + ").write_text(str(os.getpid()));"
                    "time.sleep(60)")
         self.child = subprocess.Popen([sys.executable, "-c", program],
+                                      start_new_session=self.detached,
                                       stdout=subprocess.DEVNULL,
                                       stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 5
@@ -163,6 +165,37 @@ class SupervisionTests(unittest.TestCase):
         with patch.object(supervisor.os, "killpg") as kill_group:
             self.assertFalse(supervisor._signal_owned_group(fake, fake.pid, signal.SIGKILL))
             kill_group.assert_not_called()
+
+    @unittest.skipIf(os.name == "nt", "POSIX detached browser process")
+    def test_timeout_cleans_detached_descendant_and_keeps_unrelated(self):
+        unrelated=subprocess.Popen([sys.executable,"-c","import time;time.sleep(60)"])
+        child_pid=None
+        try:
+            with tempfile.TemporaryDirectory() as folder, patch.object(supervisor,"_TERMINATE_GRACE",.2):
+                marker=str(Path(folder)/"detached.pid")
+                backend=supervisor.SupervisedBrowserBackend(
+                    work=folder,backend_factory=partial(HangingDescendantBackend,marker,detached=True),
+                    wall_timeout=.2,startup_timeout=10)
+                try:
+                    backend._start()
+                    child_pid=int(Path(marker).read_text())
+                    self.assertEqual(os.getpgid(child_pid),child_pid)
+                    self.assertNotEqual(child_pid,backend._pgid)
+                    self.assertTrue(any(p.pid==child_pid for p in backend._descendants.values()))
+                    result=backend.fetch_post("https://example.invalid/offline")
+                    self.assertEqual(result["status"],"timeout")
+                    deadline=time.monotonic()+3
+                    while pid_running(child_pid) and time.monotonic()<deadline:
+                        time.sleep(.02)
+                    self.assertFalse(pid_running(child_pid),"detached browser remains running")
+                    self.assertIsNone(unrelated.poll(),"unrelated process was terminated")
+                finally:
+                    backend.close()
+        finally:
+            if child_pid and pid_running(child_pid):
+                os.kill(child_pid,signal.SIGKILL)
+            unrelated.terminate()
+            unrelated.wait(timeout=5)
 
     def test_cleanup_wait_survives_second_keyboard_interrupt(self):
         fake = type("Process", (), {"sentinel": 123})()
